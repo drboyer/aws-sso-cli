@@ -29,6 +29,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sso"
 	"github.com/aws/aws-sdk-go-v2/service/sso/types"
+	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/synfinatic/aws-sso-cli/storage"
 )
@@ -289,6 +290,60 @@ func TestGetAccounts(t *testing.T) {
 		}, aInfo[2])
 		assert.Equal(t, aInfo[2], as.Accounts[2])
 	}
+
+	// verify we handle more complex error situations
+	as.Accounts = []AccountInfo{} // flush cash
+
+	as.sso = &mockSsoApi{
+		Results: []mockSsoApiResults{
+			{
+				Error: fmt.Errorf("This error is handled internally"),
+			},
+			{
+				Error: fmt.Errorf("This error is returned"),
+			},
+		},
+	}
+
+	as.ssooidc = &mockSsoOidcApi{
+		Results: []mockSsoOidcApiResults{
+			{
+				RegisterClient: &ssooidc.RegisterClientOutput{
+					AuthorizationEndpoint: nil,
+					ClientId:              aws.String("this-is-my-client-id"),
+					ClientSecret:          aws.String("this-is-my-client-secret"),
+					ClientIdIssuedAt:      int64(42),
+					ClientSecretExpiresAt: int64(4200),
+					TokenEndpoint:         nil,
+				},
+				Error: nil,
+			},
+			{
+				StartDeviceAuthorization: &ssooidc.StartDeviceAuthorizationOutput{
+					DeviceCode:              aws.String("device-code"),
+					UserCode:                aws.String("user-code"),
+					VerificationUri:         aws.String("verification-uri"),
+					VerificationUriComplete: aws.String("verification-uri-complete"),
+					ExpiresIn:               42,
+					Interval:                5,
+				},
+				Error: nil,
+			},
+			{
+				CreateToken: &ssooidc.CreateTokenOutput{
+					AccessToken:  aws.String("access-token"),
+					ExpiresIn:    42,
+					IdToken:      aws.String("id-token"),
+					RefreshToken: aws.String("refresh-token"),
+					TokenType:    aws.String("token-type"),
+				},
+				Error: nil,
+			},
+		},
+	}
+
+	_, err = as.GetAccounts()
+	assert.Error(t, err)
 }
 
 func TestGetRoleCredentials(t *testing.T) {
